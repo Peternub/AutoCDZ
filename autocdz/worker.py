@@ -51,11 +51,18 @@ class Worker:
             if changed:
                 await self.notify(user_id, f"📘 Обнаружено новых или изменённых ДЗ: {changed}. Открой «Мои ЦДЗ». Форматы материалов без подтверждённого парсера не обрабатываются.")
         except SessionExpired:
+            current = await self.store.connection(user_id)
+            if not current or current["session_id"] != connection["session_id"]:
+                return
             await self.store.sync_result(user_id, connection["session_id"], "expired")
             await self.notify(user_id, "🔒 Сессия МЭШ истекла или доступ отклонён. Сохранённая сессия удалена. Подключи аккаунт повторно.")
         except MeshUnavailable:
+            current = await self.store.connection(user_id)
+            if not current or current["session_id"] != connection["session_id"]:
+                return
             await self.store.sync_result(user_id, connection["session_id"], "unavailable")
-            await self.notify(user_id, "⚠️ МЭШ временно недоступна. Следующая проверка выполнится по расписанию.")
+            if connection["failures"] == 0:
+                await self.notify(user_id, "⚠️ МЭШ временно недоступна. Следующая проверка выполнится по расписанию.")
 
     async def process_one(self):
         if not self.config.ai_key or not self.config.ai_model:
@@ -63,6 +70,27 @@ class Worker:
         job = await self.store.claim_job()
         if not job:
             return
+        processing = asyncio.create_task(self.process_job(job))
+        try:
+            while not processing.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(processing), timeout=30)
+                except TimeoutError:
+                    if not await self.store.extend_lease(job):
+                        break
+        except Exception as error:
+            logging.error("Ошибка задачи: %s", type(error).__name__)
+            await self.store.finish_job(job, code="internal_error")
+        finally:
+            if not processing.done():
+                processing.cancel()
+            try:
+                with suppress(asyncio.CancelledError, Exception):
+                    await processing
+            finally:
+                await self.store.release_job(job)
+
+    async def process_job(self, job):
         task = Assignment.model_validate_json(job["payload"])
         answers, code = [], None
         try:

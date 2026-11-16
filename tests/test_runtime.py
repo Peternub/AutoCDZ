@@ -1,6 +1,7 @@
 """Проверки HTTPS-подключения, фоновой работы и внешних контрактов."""
 
 import json
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -151,6 +152,23 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             await self.worker.process_one()
         self.assertEqual(self.solver.solve.await_count, 3)
         self.assertEqual((await self.store.assignments(99))[0]["status"], "attention")
+
+    async def test_shutdown_returns_job_without_waiting_for_lease(self):
+        await self.connect()
+        await self.store.automation(99, True)
+        connection = await self.store.connection(99)
+        await self.store.save_assignment(99, connection["session_id"], assignment(questions=[question()]))
+        entered = asyncio.Event()
+        async def slow_solver(*args):
+            entered.set()
+            await asyncio.Event().wait()
+        self.solver.solve.side_effect = slow_solver
+        task = asyncio.create_task(self.worker.process_one())
+        await asyncio.wait_for(entered.wait(), timeout=5)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertIsNotNone(await self.store.claim_job())
 
 
 def mocked_session(data, status=200):

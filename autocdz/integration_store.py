@@ -179,8 +179,25 @@ class IntegrationStore:
                 row = await cursor.fetchone()
             if not row:
                 return None
-            await db.execute("UPDATE processing_jobs SET state='processing',attempts=attempts+1,lease_token=?,lease_until=? WHERE id=?", (lease, stamp + 7200, row["id"]))
+            await db.execute("UPDATE processing_jobs SET state='processing',attempts=attempts+1,lease_token=?,lease_until=? WHERE id=?", (lease, stamp + 120, row["id"]))
             return {**dict(row), "lease_token": lease}
+
+    async def extend_lease(self, job):
+        async with self.transaction() as db:
+            async with db.execute("""UPDATE processing_jobs SET lease_until=? WHERE id=?
+                AND lease_token=? AND state='processing' RETURNING id""",
+                                  (time.time() + 120, job["id"], job["lease_token"])) as cursor:
+                return bool(await cursor.fetchone())
+
+    async def release_job(self, job):
+        async with self.transaction() as db:
+            await db.execute("""UPDATE assignments SET status='attention' WHERE id IN
+                (SELECT assignment_id FROM processing_jobs WHERE id=? AND lease_token=?
+                AND state='processing' AND attempts>=3)""", (job["id"], job["lease_token"]))
+            await db.execute("""UPDATE processing_jobs SET state='pending',lease_until=0
+                WHERE id=? AND lease_token=? AND state='processing'""", (job["id"], job["lease_token"]))
+            await db.execute("""UPDATE processing_jobs SET state='error',error_code='attempts_exhausted'
+                WHERE id=? AND state='pending' AND attempts>=3""", (job["id"],))
 
     async def finish_job(self, job, answers=None, code=None):
         async with self.transaction() as db:
