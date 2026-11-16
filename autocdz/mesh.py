@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import aiohttp
 
 from autocdz.domain import Assignment
+from autocdz.transport import read_limited
 
 
 class SessionExpired(Exception):
@@ -33,9 +34,7 @@ class MeshConnector:
                     if response.status != 200:
                         raise MeshUnavailable("МЭШ временно недоступна")
                     # Не читаем неограниченный ответ и не сохраняем его целиком.
-                    body = await response.content.read(2_000_001)
-                    if len(body) > 2_000_000:
-                        raise MeshUnavailable("Ответ МЭШ слишком большой")
+                    body = await read_limited(response, 2_000_000)
                     import json
                     data = json.loads(body)
             return self.normalize(data)

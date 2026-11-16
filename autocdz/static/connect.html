@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Подключение МЭШ — закрытый тест</title>
+<style>
+body{font:16px/1.5 system-ui;background:#f3f5f9;color:#172033;margin:0;padding:24px}main{max-width:620px;margin:4vh auto;background:white;padding:32px;border-radius:20px}h1{font-size:26px}label{display:block;margin:20px 0}input[type=password],input[type=number]{box-sizing:border-box;display:block;width:100%;padding:12px;margin-top:8px;border:1px solid #b7c1d2;border-radius:8px}button{background:#2855da;color:white;border:0;padding:14px 20px;border-radius:10px;font:inherit;cursor:pointer}button:disabled{opacity:.5}#result{white-space:pre-wrap}small{color:#475569}
+</style>
+<main>
+<h1>Подключение собственного аккаунта МЭШ</h1>
+<p>Экспериментальный доступ только для владельца бота. Войди в МЭШ на официальном сайте самостоятельно. Эта форма не принимает пароль mos.ru и не заменяет официальный вход.</p>
+<p>Используется уже существующий токен сессии и ID профиля ученика. Если ты не знаешь, где получить их безопасно, остановись: вход по логину и паролю ещё не реализован.</p>
+<p><strong>Риск:</strong> сессия может давать доступ ко всему аккаунту. Наш код читает только домашние задания, но права самого токена этим не ограничиваются. Автосдача отключена.</p>
+<form id="connect-form" autocomplete="off">
+<label>Токен собственной сессии<input id="token" type="password" required autocomplete="off" maxlength="8192"></label>
+<label>ID профиля ученика<input id="profile" type="number" required min="1" step="1"></label>
+<label><input id="consent" type="checkbox" required> Это мой аккаунт. Разрешаю проверку сессии и чтение ДЗ, понимаю риск широких прав токена.</label>
+<label><input id="ai-consent" type="checkbox"> Разрешаю отправлять распознанные вопросы ИИ-провайдеру, выбранному владельцем. Учётные данные не передаются; фильтр не гарантирует обнаружение всех личных сведений в тексте.</label>
+<button id="submit" type="submit">Проверить и подключить</button>
+</form>
+<p id="result" role="status"></p>
+<small>Ссылка действует 10 минут. Сессия шифруется на сервере. Отключение и удаление данных доступны в Telegram.</small>
+</main>
+<script src="/connect.js" defer></script>
+</html>

@@ -5,6 +5,7 @@ import json
 import aiohttp
 
 from autocdz.domain import Answer, Question, solver_payload, validate_answer
+from autocdz.transport import read_limited
 
 
 class SolverUnavailable(Exception):
@@ -43,9 +44,7 @@ class AISolver:
                 ) as response:
                     if response.status != 200:
                         raise SolverUnavailable("ИИ-провайдер отклонил запрос")
-                    body = await response.content.read(100_001)
-                    if len(body) > 100_000:
-                        raise SolverUnavailable("Слишком большой ответ ИИ")
+                    body = await read_limited(response, 100_000)
                     data = json.loads(body)
             message = data["choices"][0]["message"]
             if message.get("refusal"):
