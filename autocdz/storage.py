@@ -36,6 +36,8 @@ class Storage:
                 created_at TEXT NOT NULL
             );
         """)
+        migration = Path(__file__).parent / "migrations" / "001_mesh.sql"
+        await self.db.executescript(migration.read_text(encoding="utf-8"))
         await self.db.commit()
 
     async def close(self):
