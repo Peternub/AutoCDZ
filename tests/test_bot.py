@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock
+from cryptography.fernet import Fernet
 
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
@@ -11,6 +12,7 @@ from aiogram.types import Update
 from autocdz.bot import create_router
 from autocdz.config import Config
 from autocdz.storage import Storage
+from autocdz.integration_store import IntegrationStore
 
 
 class BotTests(unittest.IsolatedAsyncioTestCase):
@@ -21,7 +23,9 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
         self.bot = Bot("123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi")
         self.bot.session.make_request = AsyncMock(return_value=True)
         self.dispatcher = Dispatcher()
-        self.dispatcher.include_router(create_router(Config(self.bot.token, 99), self.storage))
+        self.config = Config(self.bot.token, 99, mesh_enabled=True, public_url="https://test.example", encryption_key=Fernet.generate_key().decode())
+        self.integration = IntegrationStore(self.storage.path, self.config.encryption_key)
+        self.dispatcher.include_router(create_router(self.config, self.storage, self.integration))
 
     async def asyncTearDown(self):
         await self.bot.session.close()
@@ -60,6 +64,33 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
         await self.send(1, "/start", "group")
         self.assertIsNone(await self.storage.user(1))
         self.bot.session.make_request.assert_not_called()
+
+    async def test_non_owner_cannot_get_connection_link(self):
+        await self.send(1, "🔗 Подключить МЭШ")
+        self.assertIn("недоступно", self.last_text())
+        self.assertNotIn("test.example", self.last_text())
+
+    async def test_owner_gets_expiring_link(self):
+        await self.send(99, "🔗 Подключить МЭШ")
+        method = self.bot.session.make_request.call_args.args[1]
+        url = method.reply_markup.inline_keyboard[0][0].url
+        self.assertTrue(url.startswith("https://test.example/connect#"))
+        self.assertEqual(await self.integration.ticket_owner(url.split("#")[1]), 99)
+
+    async def test_assignments_are_owned(self):
+        from test_integration import assignment
+        await self.send(99, "/start")
+        session = await self.integration.connect(99, "secret", 123)
+        await self.integration.save_assignment(99, session, assignment())
+        await self.send(1, "📚 Мои ЦДЗ")
+        self.assertIn("Заданий пока нет", self.last_text())
+        await self.send(99, "📚 Мои ЦДЗ")
+        self.assertIn("Неподдерживаемый формат", self.last_text())
+
+    async def test_price_and_tribute_status_are_honest(self):
+        await self.send(1, "💎 Подписка")
+        self.assertIn("349 ₽ за 30 дней", self.last_text())
+        self.assertIn("Tribute пока отключены", self.last_text())
 
     async def test_delete_callback_only_deletes_owner(self):
         await self.storage.register(1)
